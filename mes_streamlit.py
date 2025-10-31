@@ -6,6 +6,8 @@
 #    - https://meschat.streamlit.app/?api=login-for-gpt&userKey=...&password=...
 #    - https://meschat.streamlit.app/?api=inventory-for-gpt&session_id=...&itemCode=...
 #    - https://meschat.streamlit.app/?api=shipments-for-gpt&session_id=...&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+# ⚠️ 단, streamlit.io 는 기본적으로 HTML 앱을 내보내기 때문에 GPT(외부 HTTP 클라이언트)가 이 URL을 직접 호출하면 HTML이 먼저 내려올 수 있음. # ★
+# ⚠️ 이 파일을 실제로 GPT용으로 쓰려면 이 파일을 서비스의 메인 파일(streamlit_app.py)로 배포하거나, 별도 FastAPI/백엔드에서 이 로직을 실행해야 함. # ★
 # ----------------------------------------
 
 import streamlit as st
@@ -37,6 +39,7 @@ def init_session_state():
         st.session_state.last_error = ""
     if "session_id" not in st.session_state:
         st.session_state.session_id = None
+    # streamlit cloud에서 이 파일이 실제 main으로 올라갔는지 확인이 안 되면 HTML만 내려갈 수 있음 # ★
 
 init_session_state()
 
@@ -265,6 +268,8 @@ def filter_shipment_rows(rows, item_code, lot_code, partner_code):
 # ----------------------------------------------------------
 # 11. 여기서부터가 GPT용 모드
 #    ?api=... 로 오면 화면 안 그리고 JSON만 반환하고 끝냄
+#    ※ 단, streamlit.io 가 이 코드를 실제로 실행하지 않고 HTML만 내보내면
+#       여기 아래 코드는 GPT에게는 보이지 않습니다. 이건 서비스 구조 문제입니다. # ★
 # ----------------------------------------------------------
 try:
     qp = st.query_params  # 최신버전
