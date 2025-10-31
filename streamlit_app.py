@@ -277,13 +277,21 @@ try:
 except Exception:
     qp = st.experimental_get_query_params()  # 구버전
 
-api_mode = qp.get("api", [None])[0] if qp else None
+def _get_qp(qp_dict, name, default=""):
+    val = qp_dict.get(name)
+    if val is None:
+        return default
+    if isinstance(val, list):
+        return val[0] if val else default
+    return str(val)
+
+api_mode = _get_qp(qp, "api", "").strip()
 
 if api_mode:
     # 11-1. 로그인 모드
     if api_mode == "login-for-gpt":
-        user_key = qp.get("userKey", [""])[0]
-        password = qp.get("password", [""])[0]
+        user_key = _get_qp(qp, "userKey", "")
+        password = _get_qp(qp, "password", "")
         if not user_key or not password:
             st.json({"ok": False, "message": "userKey / password 둘 다 필요합니다."})
             st.stop()
@@ -296,15 +304,15 @@ if api_mode:
 
     # 11-2. 재고 조회 모드
     elif api_mode == "inventory-for-gpt":
-        session_id = qp.get("session_id", [""])[0]
+        session_id = _get_qp(qp, "session_id", "")
         if not st.session_state.logged_in or session_id != st.session_state.session_id:
             st.json({"ok": False, "message": "로그인 필요 또는 세션 불일치"})
             st.stop()
 
-        item_code = qp.get("itemCode", [""])[0]
-        item_name = qp.get("itemName", [""])[0]
-        warehouse_code = qp.get("warehouseCode", [""])[0]
-        lot_code = qp.get("lotCode", [""])[0]
+        item_code = _get_qp(qp, "itemCode", "")
+        item_name = _get_qp(qp, "itemName", "")
+        warehouse_code = _get_qp(qp, "warehouseCode", "")
+        lot_code = _get_qp(qp, "lotCode", "")
 
         ok, msg, rows = mes_inventory_fetch_raw(max_limit=9999)
         if not ok:
@@ -317,16 +325,16 @@ if api_mode:
 
     # 11-3. 출하 조회 모드
     elif api_mode == "shipments-for-gpt":
-        session_id = qp.get("session_id", [""])[0]
+        session_id = _get_qp(qp, "session_id", "")
         if not st.session_state.logged_in or session_id != st.session_state.session_id:
             st.json({"ok": False, "message": "로그인 필요 또는 세션 불일치"})
             st.stop()
 
-        date_from = qp.get("date_from", [""])[0]
-        date_to = qp.get("date_to", [""])[0]
-        item_code = qp.get("itemCode", [""])[0]
-        lot_code = qp.get("lotCode", [""])[0]
-        partner_code = qp.get("partnerCode", [""])[0]
+        date_from = _get_qp(qp, "date_from", "")
+        date_to = _get_qp(qp, "date_to", "")
+        item_code = _get_qp(qp, "itemCode", "")
+        lot_code = _get_qp(qp, "lotCode", "")
+        partner_code = _get_qp(qp, "partnerCode", "")
 
         if not date_from or not date_to:
             st.json({"ok": False, "message": "date_from / date_to 둘 다 필요합니다. 예) 2025-10-29"})
