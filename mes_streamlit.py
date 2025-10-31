@@ -13,15 +13,19 @@ import requests
 import pandas as pd
 from datetime import date, timedelta
 
+# 1. 기본 설정
 st.set_page_config(
     page_title="QFactory MES Helper",
     layout="wide"
 )
 
+# 2. MES 서버 URL
 BASE_URL = "https://qf3.qfactory.biz:8000"
+
+# 3. 인증서 경고 끄기 (개발용)
 requests.packages.urllib3.disable_warnings()
 
-
+# 4. 세션 초기화
 def init_session_state():
     if "session" not in st.session_state:
         st.session_state.session = requests.Session()
@@ -34,10 +38,9 @@ def init_session_state():
     if "session_id" not in st.session_state:
         st.session_state.session_id = None
 
-
 init_session_state()
 
-
+# 5. 공통 헤더
 def _common_headers():
     return {
         "Accept": "*/*",
@@ -48,16 +51,17 @@ def _common_headers():
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Streamlit-MES/1.0"
     }
 
-
+# 6. MES 로그인
 def mes_login(user_key: str, password: str):
     url = f"{BASE_URL}/common/login/post-login"
     headers = _common_headers()
     payload = {
-        "companyCode": "BWC40601",
-        "userKey": user_key,
-        "password": password,
-        "languageCode": "KO"
+        "companyCode": "BWC40601",   # 고정
+        "userKey": user_key,         # 사용자 입력
+        "password": password,        # 사용자 입력
+        "languageCode": "KO"         # 고정
     }
+
     sess: requests.Session = st.session_state.session
     try:
         resp = sess.post(url, headers=headers, json=payload, verify=False, timeout=10)
@@ -79,6 +83,7 @@ def mes_login(user_key: str, password: str):
         st.session_state.last_error = f"로그인 실패: {data}"
         return False, data
 
+    # 로그인 성공 → 세션에 저장
     st.session_state.logged_in = True
     st.session_state.login_info = {
         "userKey": user_key,
@@ -89,12 +94,14 @@ def mes_login(user_key: str, password: str):
         "languageCode": data["userInfo"]["languageCode"],
         "userName": data["userInfo"]["userName"],
     }
+    # GPT가 식별할 수 있는 session_id 만들어두기
     if not st.session_state.session_id:
         st.session_state.session_id = f"mes-{user_key}"
+
     st.session_state.last_error = ""
     return True, data
 
-
+# 7. 재고 원본 조회 (전체를 먼저 가져옴)
 def mes_inventory_fetch_raw(max_limit: int = 9999):
     if not st.session_state.logged_in:
         return False, "로그인 필요", None
@@ -102,10 +109,12 @@ def mes_inventory_fetch_raw(max_limit: int = 9999):
     info = st.session_state.login_info
     url = f"{BASE_URL}/inv/stock-onhand-lot/detail-list"
     headers = _common_headers()
+
     payload = {
         "languageCode": info.get("languageCode", "KO"),
         "companyId": info.get("companyId", 100),
         "plantId": info.get("plantId", 11),
+        # 필터는 비워서 크게 가져오고, 화면/GPT에서 필터
         "itemCode": "",
         "itemName": "",
         "itemType": "",
@@ -133,6 +142,7 @@ def mes_inventory_fetch_raw(max_limit: int = 9999):
         "page": 1,
         "limit": str(max_limit),
     }
+
     sess: requests.Session = st.session_state.session
     try:
         resp = sess.post(url, headers=headers, json=payload, verify=False, timeout=15)
@@ -150,7 +160,7 @@ def mes_inventory_fetch_raw(max_limit: int = 9999):
     rows = data.get("data", {}).get("list", [])
     return True, "OK", rows
 
-
+# 8. 재고 로컬 필터
 def filter_inventory_rows(rows, item_code, item_name, warehouse_code, lot_code):
     if not rows:
         return []
@@ -165,7 +175,7 @@ def filter_inventory_rows(rows, item_code, item_name, warehouse_code, lot_code):
             return True
         return cond in str(val).lower()
 
-    out = []
+    filtered = []
     for r in rows:
         if not match(r.get("itemCode", ""), item_code):
             continue
@@ -175,10 +185,11 @@ def filter_inventory_rows(rows, item_code, item_name, warehouse_code, lot_code):
             continue
         if not match(r.get("lotCode", ""), lot_code):
             continue
-        out.append(r)
-    return out
+        filtered.append(r)
 
+    return filtered
 
+# 9. 출하 원본 조회
 def mes_shipment_fetch_raw(date_from: str, date_to: str, max_limit: int = 9999):
     if not st.session_state.logged_in:
         return False, "로그인 필요", None
@@ -186,6 +197,7 @@ def mes_shipment_fetch_raw(date_from: str, date_to: str, max_limit: int = 9999):
     info = st.session_state.login_info
     url = f"{BASE_URL}/sal/shipping_history/shipment-result-list"
     headers = _common_headers()
+
     payload = {
         "languageCode": info.get("languageCode", "KO"),
         "companyId": info.get("companyId", 100),
@@ -207,6 +219,7 @@ def mes_shipment_fetch_raw(date_from: str, date_to: str, max_limit: int = 9999):
         "page": 1,
         "limit": str(max_limit),
     }
+
     sess: requests.Session = st.session_state.session
     try:
         resp = sess.post(url, headers=headers, json=payload, verify=False, timeout=15)
@@ -224,7 +237,7 @@ def mes_shipment_fetch_raw(date_from: str, date_to: str, max_limit: int = 9999):
     rows = data.get("data", {}).get("list", [])
     return True, "OK", rows
 
-
+# 10. 출하 로컬 필터
 def filter_shipment_rows(rows, item_code, lot_code, partner_code):
     if not rows:
         return []
@@ -238,7 +251,7 @@ def filter_shipment_rows(rows, item_code, lot_code, partner_code):
             return True
         return cond in str(val).lower()
 
-    out = []
+    filtered = []
     for r in rows:
         if not match(r.get("itemCode", ""), item_code):
             continue
@@ -246,24 +259,23 @@ def filter_shipment_rows(rows, item_code, lot_code, partner_code):
             continue
         if not match(r.get("partnerCode", ""), partner_code):
             continue
-        out.append(r)
-    return out
+        filtered.append(r)
+    return filtered
 
-
-# -----------------------------------------------------------------
-# 1) 여기서 GPT용 API 모드 먼저 처리
-# -----------------------------------------------------------------
-# Streamlit 최신버전은 st.query_params, 구버전은 st.experimental_get_query_params
+# ----------------------------------------------------------
+# 11. 여기서부터가 GPT용 모드
+#    ?api=... 로 오면 화면 안 그리고 JSON만 반환하고 끝냄
+# ----------------------------------------------------------
 try:
-    qp = st.query_params  # type: ignore
+    qp = st.query_params  # 최신버전
     qp = dict(qp)
 except Exception:
-    qp = st.experimental_get_query_params()
+    qp = st.experimental_get_query_params()  # 구버전
 
 api_mode = qp.get("api", [None])[0] if qp else None
 
 if api_mode:
-    # 공통: 로그인 안 돼 있으면, login-for-gpt 말고는 에러
+    # 11-1. 로그인 모드
     if api_mode == "login-for-gpt":
         user_key = qp.get("userKey", [""])[0]
         password = qp.get("password", [""])[0]
@@ -277,11 +289,13 @@ if api_mode:
             st.json({"ok": False, "message": st.session_state.last_error or "login failed"})
         st.stop()
 
+    # 11-2. 재고 조회 모드
     elif api_mode == "inventory-for-gpt":
         session_id = qp.get("session_id", [""])[0]
         if not st.session_state.logged_in or session_id != st.session_state.session_id:
             st.json({"ok": False, "message": "로그인 필요 또는 세션 불일치"})
             st.stop()
+
         item_code = qp.get("itemCode", [""])[0]
         item_name = qp.get("itemName", [""])[0]
         warehouse_code = qp.get("warehouseCode", [""])[0]
@@ -291,10 +305,12 @@ if api_mode:
         if not ok:
             st.json({"ok": False, "message": msg})
             st.stop()
+
         filtered = filter_inventory_rows(rows, item_code, item_name, warehouse_code, lot_code)
-        st.json({"ok": True, "rows": filtered, "message": "OK", "total": len(filtered)})
+        st.json({"ok": True, "rows": filtered, "total": len(filtered), "message": "OK"})
         st.stop()
 
+    # 11-3. 출하 조회 모드
     elif api_mode == "shipments-for-gpt":
         session_id = qp.get("session_id", [""])[0]
         if not st.session_state.logged_in or session_id != st.session_state.session_id:
@@ -315,17 +331,18 @@ if api_mode:
         if not ok:
             st.json({"ok": False, "message": msg})
             st.stop()
+
         filtered = filter_shipment_rows(rows, item_code, lot_code, partner_code)
-        st.json({"ok": True, "rows": filtered, "message": "OK", "total": len(filtered)})
+        st.json({"ok": True, "rows": filtered, "total": len(filtered), "message": "OK"})
         st.stop()
 
     else:
         st.json({"ok": False, "message": f"알 수 없는 api 모드: {api_mode}"})
         st.stop()
 
-# -----------------------------------------------------------------
-# 2) 여기부터는 기존 사람용 화면
-# -----------------------------------------------------------------
+# ----------------------------------------------------------
+# 12. 여기부터는 기존 사람용 화면
+# ----------------------------------------------------------
 
 st.title("QFactory MES 연동 (Streamlit 버전)")
 
@@ -346,7 +363,6 @@ with st.sidebar:
 
 if page == "로그인":
     st.subheader("MES 로그인")
-
     col1, col2 = st.columns(2)
     with col1:
         user_key = st.text_input("MES ID (userKey)", value=st.session_state.login_info.get("userKey", ""), max_chars=50)
@@ -370,7 +386,6 @@ if page == "로그인":
 
 elif page == "재고관리":
     st.subheader("재고관리 조회")
-
     if not st.session_state.logged_in:
         st.error("먼저 로그인부터 하세요.")
     else:
@@ -384,7 +399,7 @@ elif page == "재고관리":
                 warehouse_code = st.text_input("창고코드(warehouseCode)", value="")
             with c4:
                 lot_code = st.text_input("LOT코드(lotCode)", value="")
-            st.caption("조건은 화면에서 필터합니다.")
+            st.caption("※ 조건은 여기에서만 필터합니다. MES에는 전체 요청.")
 
         if st.button("재고 조회"):
             ok, msg, rows = mes_inventory_fetch_raw(max_limit=9999)
@@ -402,7 +417,6 @@ elif page == "재고관리":
 
 elif page == "출하관리":
     st.subheader("출하이력 조회")
-
     if not st.session_state.logged_in:
         st.error("먼저 로그인부터 하세요.")
     else:
@@ -420,7 +434,7 @@ elif page == "출하관리":
             with c4:
                 lot_code = st.text_input("LOT코드(lotCode)", value="")
             partner_code = st.text_input("거래처코드(partnerCode)", value="")
-            st.caption("날짜는 원격, 나머지는 화면에서 필터합니다.")
+            st.caption("※ 날짜는 서버로 보내고, 나머지는 여기에서 필터합니다.")
 
         if st.button("출하이력 조회"):
             ok, msg, rows = mes_shipment_fetch_raw(
